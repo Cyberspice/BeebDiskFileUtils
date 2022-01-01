@@ -1,0 +1,34 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include "acornfs.h"
+#include "acnfserr.h"
+#include "debug.h"
+
+/**
+ * \brief Frees the memory of an Acorn directory
+ *
+ * This frees all the dynamic memory used by an Acorn directory
+ * structure.
+ *
+ * \param acorn_dirp pointer to the directory
+ * \return 0 on success or an error
+ */
+int acornfs_free_directory(ACORN_DIRECTORY * acorn_dirp) {
+  ACORN_FILE * acorn_filep;
+
+  if (acorn_dirp == NULL) {
+    if (DEBUG_LEVEL(DEBUG_LEVEL_ERROR)) fprintf(stdout, "Invalid directory pointer!\n");
+    return ACORNFS_ERROR_FAILED;
+  }
+
+  acorn_filep = acorn_dirp->files;
+  for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+    free(acorn_filep->name);
+    acorn_filep++;
+  }
+
+  free(acorn_dirp->name);
+  free(acorn_dirp);
+
+  return ACORNFS_ERROR_NONE;
+}
