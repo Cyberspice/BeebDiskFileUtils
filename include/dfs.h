@@ -104,7 +104,7 @@ int dfs_format_diskfile(int num_of_sectors, const char * name, FILE * diskfile);
  *
  * \return 0 on success or an error
  */
-int dfs_extract_file(FILE * diskfile, ACORN_FILE *acorn_filep, FILE * file);
+int dfs_extract_file(FILE * diskfile, const ACORN_FILE *acorn_filep, FILE * file);
 
 #ifdef __cplusplus
 }

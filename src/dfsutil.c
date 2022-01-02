@@ -6,10 +6,19 @@
 #include <getopt.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <errno.h>
+#include <limits.h>
 
 #include "dfs.h"
 #include "acornfs.h"
 #include "debug.h"
+
+#define DFSUTILS_ERROR_FAILED          EXIT_FAILURE
+#define DFSUTILS_DISKFILE_NOT_FOUND    2
+#define DFSUTILS_NOT_A_DFSDISK         3
+#define DFSUTILS_OPEN_FAILED           4
+#define DFSUTILS_FILE_NOT_FOUND        5
+#define DFSUTILS_NAME_TOO_LONG         6
 
 static int tracks = 80;
 static char * target_dir = NULL;
@@ -18,9 +27,9 @@ static void short_help(void) {
   fprintf(stderr,
     "dfsutils - Acorn DFS disk image utilities\n\n"
     "Usage: dfsutils diskfile\n"
-    "   or: dfsutils --add [option] diskfile [file [file]...]\n"
+    "   or: dfsutils --add [option] diskfile file load_address exec_address file_opts\n"
     "   or: dfsutils --extract [option] diskfile [file [file]...]\n"
-    "   or: dfsutils --format [option] diskfile diskname [file [file]...]\n"
+    "   or: dfsutils --format [option] diskfile diskname\n"
     "   or: dfsutils --remove [option] diskfile file [file [file]...]\n"
     "   or: dfsutils --update [option] diskfile file load_address exec_address file_opts\n"
   );
@@ -43,6 +52,19 @@ static void help(void) {
   );
 }
 
+static int dfs_error_to_exit_status(int dfserr) {
+  switch (dfserr) {
+    case DFS_ERROR_NONE:
+      return EXIT_SUCCESS;
+    case DFS_ERROR_NOT_A_DFS_DISK:
+      return DFSUTILS_NOT_A_DFSDISK;
+    case DFS_ERROR_FAILED:
+      /* Drop through */
+    default:
+      return DFSUTILS_ERROR_FAILED;
+  }
+}
+
 static int list_diskfile(int argc, char * argv[]) {
   static char * optionstr[] = {
     "None",
@@ -52,16 +74,23 @@ static int list_diskfile(int argc, char * argv[]) {
   };
 
   ACORN_DIRECTORY * acorn_dirp;
+  int ret;
 
   FILE * diskfile = fopen(argv[0], "rb");
   if (diskfile == NULL) {
-    perror("dfsutils");
-    return 1;
+    if (errno == ENOENT) {
+      fprintf(stderr, "File not found: %s\n", argv[0]);
+      return DFSUTILS_DISKFILE_NOT_FOUND;
+    }
+
+    fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
+    return DFSUTILS_OPEN_FAILED;
   }
 
-  if (dfs_read_catalogue(diskfile, &acorn_dirp)) {
+  ret = dfs_read_catalogue(diskfile, &acorn_dirp);
+  if (ret != DFS_ERROR_NONE) {
     fclose(diskfile);
-    return 1;
+    return dfs_error_to_exit_status(ret);
   }
 
   fclose(diskfile);
@@ -71,7 +100,7 @@ static int list_diskfile(int argc, char * argv[]) {
   printf("----------------------------------------------------------------\n");
 
   if (acorn_dirp->num_of_files) {
-    ACORN_FILE * acorn_filep = acorn_dirp->files;
+    ACORN_FILE * acorn_filep = &(acorn_dirp->files[0]);
 
     for (int i = 0; i < acorn_dirp->num_of_files; i++) {
       printf("  %-16s 0x%08x 0x%08x %10u %10u\n",
@@ -89,85 +118,162 @@ static int list_diskfile(int argc, char * argv[]) {
   printf("%d files\n", acorn_dirp->num_of_files);
   acornfs_free_directory(acorn_dirp);
 
-  return 0;
+  return EXIT_SUCCESS;
+}
+
+static int extract_file(FILE* diskfile, const char * dirname, const ACORN_FILE * acorn_filep) {
+  static char path[NAME_MAX + 1];
+  FILE * file;
+  int ret;
+
+  snprintf(path, sizeof(path), "%s/%s", dirname, acorn_filep->name);
+  printf("Extracting: %s\n", path);
+
+  file = fopen(path, "wb");
+  if (file == NULL) {
+    fprintf(stderr, "File error: %s\n", strerror(errno));
+    return DFSUTILS_OPEN_FAILED;
+  }
+
+  ret = dfs_extract_file(diskfile, acorn_filep, file);
+  if (ret != DFS_ERROR_NONE) {
+    fclose(file);
+    return dfs_error_to_exit_status(ret);
+  }
+
+  fclose(file);
+  return EXIT_SUCCESS;
 }
 
 static int extract_diskfile(int argc, char * argv[]) {
   ACORN_DIRECTORY * acorn_dirp;
+  ACORN_FILE * acorn_filep;
+  char * dirname;
+  int ret;
+  int file_count = 0;
 
   FILE * diskfile = fopen(argv[0], "rb");
   if (diskfile == NULL) {
-    perror("dfsutils");
-    return 1;
+    if (errno == ENOENT) {
+      fprintf(stderr, "File not found: %s\n", argv[0]);
+      return DFSUTILS_DISKFILE_NOT_FOUND;
+    }
+
+    fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
+    return DFSUTILS_OPEN_FAILED;
   }
 
-  if (dfs_read_catalogue(diskfile, &acorn_dirp)) {
+  ret = dfs_read_catalogue(diskfile, &acorn_dirp);
+  if (ret != DFS_ERROR_NONE) {
     fclose(diskfile);
-    return 1;
+    return dfs_error_to_exit_status(ret);
   }
 
-  if (acorn_dirp->num_of_files) {
-    ACORN_FILE * acorn_filep = acorn_dirp->files;
-    char path[256];
-    FILE * file;
+  if (acorn_dirp->num_of_files == 0) {
+    printf("Disk image empty! Nothing to extract.\n");
+    fclose(diskfile);
+    return 0;
+  }
 
-    mkdir(acorn_dirp->name, 0777);
-    printf("Output dir: %s\n", acorn_dirp->name);
+  if (target_dir != NULL) {
+    dirname = target_dir;
+  } else {
+    dirname = acorn_dirp->name;
+  }
+
+  ret = mkdir(dirname, 0777);
+  if (ret == -1) {
+    fprintf(stderr, "Could not create: %s (%s)\n", dirname, strerror(errno));
+    fclose(diskfile);
+    return DFSUTILS_OPEN_FAILED;
+  }
+
+  printf("Output dir: %s\n", dirname);
+
+  argc --;
+  argv ++;
+
+  ret = 0;
+  if (argc) {
+    while (argc) {
+      int found = false;
+      for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+        if (!strcmp(acorn_dirp->files[i].name, argv[0])) {
+          found = true;
+          acorn_filep = &(acorn_dirp->files[i]);
+          break;
+        }
+      }
+
+      if (!found) {
+        fprintf(stderr, "File not found: %s\n", argv[0]);
+        ret = DFSUTILS_FILE_NOT_FOUND;
+        break;
+      }
+
+      ret = extract_file(diskfile, dirname, acorn_filep);
+      if (ret != EXIT_SUCCESS) {
+        break;
+      }
+
+      argc--;
+      argv++;
+      file_count++;
+    }
+  } else {
+    acorn_filep = acorn_dirp->files;
 
     for (int i = 0; i < acorn_dirp->num_of_files; i++) {
-      snprintf(path, sizeof(path), "%s/%s", acorn_dirp->name, acorn_filep->name);
-      printf("Extracting: %s\n", path);
-
-      file = fopen(path, "wb");
-      if (file == NULL) {
-        fprintf(stderr, "File error\n");
-        return 1;
+      ret = extract_file(diskfile, dirname, acorn_filep);
+      if (ret != EXIT_SUCCESS) {
+        break;
       }
 
-      if (dfs_extract_file(diskfile, acorn_filep, file)) {
-        fclose(file);
-        return 1;
-      }
-
-      fclose(file);
       acorn_filep++;
+      file_count++;
     }
   }
 
-  printf("%d files extracted\n", acorn_dirp->num_of_files);
-
+  printf("%d files extracted\n", file_count);
   fclose(diskfile);
 
-  return 0;
+  return ret;
 }
 
 static int format_diskfile(int argc, char * argv[]) {
   FILE * diskfile = NULL;
+  int ret;
 
   if (argc < 2) {
     short_help();
-    return 1;
+    return DFSUTILS_ERROR_FAILED;
   }
 
   if (strlen(argv[1]) > 12) {
     fprintf(stderr, "Diskname too long. Max 12 characters!");
-    return 1;
+    return DFSUTILS_NAME_TOO_LONG;
   }
 
   printf("Writing: %s\n", argv[1]);
   diskfile = fopen(argv[0], "wb");
   if (diskfile == NULL) {
-    perror("dfsutils");
-    return 1;
+    if (errno == ENOENT) {
+      fprintf(stderr, "File not found: %s\n", argv[0]);
+      return DFSUTILS_DISKFILE_NOT_FOUND;
+    }
+
+    fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
+    return DFSUTILS_OPEN_FAILED;
   }
 
-  if (dfs_format_diskfile(tracks * DFS_SECTORS_PER_TRACK, argv[1], diskfile)) {
+  ret = dfs_format_diskfile(tracks * DFS_SECTORS_PER_TRACK, argv[1], diskfile);
+  if (ret != DFS_ERROR_NONE) {
     fclose(diskfile);
-    return 1;
+    return dfs_error_to_exit_status(ret);
   }
 
   fclose(diskfile);
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 int main(int argc, char * argv[]) {
@@ -209,7 +315,7 @@ int main(int argc, char * argv[]) {
         break;
       case 'h': /* Help */
         help();
-        exit(0);
+        exit(EXIT_SUCCESS);
         break;
       case 'r': /* Help */
         do_remove = true;
@@ -228,7 +334,7 @@ int main(int argc, char * argv[]) {
         break;
       default:
         help();
-        exit(1);
+        exit(DFSUTILS_ERROR_FAILED);
     }
   }
 
@@ -238,12 +344,12 @@ int main(int argc, char * argv[]) {
   /* Check we're not trying to do two things at once */
   if (actions > 1) {
     help();
-    exit(1);
+    exit(DFSUTILS_ERROR_FAILED);
   }
 
   if (argc < 1) {
     short_help();
-    exit(1);
+    exit(DFSUTILS_ERROR_FAILED);
   }
 
   if (do_add) {
