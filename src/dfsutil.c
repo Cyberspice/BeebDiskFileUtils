@@ -1,5 +1,4 @@
 #include <sys/stat.h>
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -19,6 +18,7 @@
 #define DFSUTILS_OPEN_FAILED           4
 #define DFSUTILS_FILE_NOT_FOUND        5
 #define DFSUTILS_NAME_TOO_LONG         6
+#define DFSUTILS_INVALID_VALUE         7
 
 static int tracks = 80;
 static char * target_dir = NULL;
@@ -27,11 +27,11 @@ static void short_help(void) {
   fprintf(stderr,
     "dfsutils - Acorn DFS disk image utilities\n\n"
     "Usage: dfsutils diskfile\n"
-    "   or: dfsutils --add [option] diskfile file load_address exec_address file_opts\n"
+    "   or: dfsutils --add [option] diskfile file load_address exec_address [locked]\n"
     "   or: dfsutils --extract [option] diskfile [file [file]...]\n"
     "   or: dfsutils --format [option] diskfile diskname\n"
     "   or: dfsutils --remove [option] diskfile file [file [file]...]\n"
-    "   or: dfsutils --update [option] diskfile file load_address exec_address file_opts\n"
+    "   or: dfsutils --update [option] diskfile file load_address exec_address [locked]\n"
   );
 }
 
@@ -267,12 +267,89 @@ static int format_diskfile(int argc, char * argv[]) {
   }
 
   ret = dfs_format_diskfile(tracks * DFS_SECTORS_PER_TRACK, argv[1], diskfile);
+
+  fclose(diskfile);
+
   if (ret != DFS_ERROR_NONE) {
-    fclose(diskfile);
     return dfs_error_to_exit_status(ret);
   }
 
+  return EXIT_SUCCESS;
+}
+
+static int add_file(int argc, char * argv[]) {
+  ACORN_FILE acorn_file;
+  FILE * diskfile = NULL;
+  FILE * file = NULL;
+  char * endptr;
+  size_t count;
+  int ret;
+
+  if (argc < 4) {
+    short_help();
+    return DFSUTILS_ERROR_FAILED;
+  }
+
+  acorn_file.load_address = strtol(argv[2], &endptr, 0);
+  if (*endptr) {
+    fprintf(stderr, "Invalid load address: %s\n", argv[2]);
+    return DFSUTILS_INVALID_VALUE;
+  }
+
+  acorn_file.exec_address = strtol(argv[3], &endptr, 0);
+  if (*endptr) {
+    fprintf(stderr, "Invalid exec address: %s\n", argv[2]);
+    return DFSUTILS_INVALID_VALUE;
+  }
+
+  if (argc > 4) {
+    if (strcmp(argv[4], "locked") == 0) {
+      acorn_file.attributes = LOCKED;
+    }
+  }
+
+  diskfile = fopen(argv[0], "rb+");
+  if (diskfile == NULL) {
+    if (errno == ENOENT) {
+      fprintf(stderr, "File not found: %s\n", argv[0]);
+      return DFSUTILS_DISKFILE_NOT_FOUND;
+    }
+
+    fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
+    return DFSUTILS_OPEN_FAILED;
+  }
+
+  file = fopen(argv[1], "rb");
+  if (file == NULL) {
+    if (errno == ENOENT) {
+      fprintf(stderr, "File not found: %s\n", argv[1]);
+      return DFSUTILS_DISKFILE_NOT_FOUND;
+    }
+
+    fprintf(stderr, "Could not open: %s (%s)\n", argv[1], strerror(errno));
+    return DFSUTILS_OPEN_FAILED;
+  }
+
+
+  ret = fseek(file, 0, SEEK_END);
+  if (ret == -1) {
+    fprintf(stderr, "Could not calculate file size: (%s)\n", strerror(errno));
+    return DFSUTILS_ERROR_FAILED;
+  }
+
+  acorn_file.name = strdup(argv[1]);
+  acorn_file.length = ftell(file);
+
+  ret = dfs_add_file(diskfile, &acorn_file, file);
+
+  free(acorn_file.name);
   fclose(diskfile);
+  fclose(file);
+
+  if (ret != DFS_ERROR_NONE) {
+    return dfs_error_to_exit_status(ret);
+  }
+
   return EXIT_SUCCESS;
 }
 
@@ -302,6 +379,8 @@ int main(int argc, char * argv[]) {
 
   while ((ch = getopt_long(argc, argv, "ad:fhruvx", longopts, NULL)) != -1) {
     switch(ch) {
+      case 0: /* Track values */
+        break;
       case 'a': /* Add */
         do_add = true;
         actions++;
@@ -353,7 +432,7 @@ int main(int argc, char * argv[]) {
   }
 
   if (do_add) {
-    return 0;
+    return add_file(argc, argv);
   }
 
   if (do_extract) {

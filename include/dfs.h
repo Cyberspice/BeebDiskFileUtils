@@ -47,7 +47,8 @@ typedef struct {
   DFS_FILE_PARAMS file_params[DFS_MAX_FILES];
 } DFS_SECTOR_1;
 
-#define DFS_NUM_OF_FILES_MASK 0xf8
+#define DFS_NUM_OF_FILES_MASK  0xf8
+#define DFS_NUM_OF_FILES_SHIFT 3
 
 #define DFS_NUM_OF_SECTORS_LOW_MASK 0x03
 #define DFS_40_TRACK_NUM_OF_SECTORS 400
@@ -60,12 +61,19 @@ typedef struct {
 #define DFS_BOOT_OPTION_EXEC 3
 
 #define DFS_MAX_DISK_NAME_LEN 12
+#define DFS_MAX_DIR_NAME_LEN  1
+#define DFS_DIR_NAME_MASK     0x7f
 #define DFS_MAX_FILE_NAME_LEN 7
+#define DFS_LOCK_BIT          0x80
 
+#define DFS_START_SECTOR_HIGH_MASK      0x03
+#define DFS_START_SECTOR_HIGH_SHIFT     0
 #define DFS_LOAD_ADDRESS_BIT_17_18_MASK 0x0c
-#define DFS_FILE_LENGTH_BIT_17_18_MASK 0x30
+#define DFS_LOAD_ADDRESS_SHIFT          2
+#define DFS_FILE_LENGTH_BIT_17_18_MASK  0x30
+#define DFS_FILE_LENGTH_SHIFT           4
 #define DFS_EXEC_ADDRESS_BIT_17_18_MASK 0xc0
-#define DFS_START_SECTOR_HIGH_MASK 0x03
+#define DFS_EXEC_ADDRESS_SHIFT          6
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,6 +113,17 @@ int dfs_format_diskfile(int num_of_sectors, const char * name, FILE * diskfile);
  * \return 0 on success or an error
  */
 int dfs_extract_file(FILE * diskfile, const ACORN_FILE *acorn_filep, FILE * file);
+
+/**
+ * \brief Adds a file to the DFS disk image
+ *
+ * \param diskfile the disk image file reference
+ * \param acorn_filep pointer to the file meta data
+ * \param file the local file reference
+ *
+ * \return 0 on success or an error
+ */
+int dfs_add_file(FILE * diskfile, ACORN_FILE * acorn_filep, FILE * file);
 
 #ifdef __cplusplus
 }
