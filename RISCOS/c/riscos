@@ -1,0 +1,30 @@
+/*******************************************************************
+ * File:        riscos
+ * Purpose:     RISC OS functions for BeebDiskFileUtils
+ * Author:      Gerph
+ * Date:        15 Feb 2024
+ ******************************************************************/
+
+#include <stdlib.h>
+#include <string.h>
+#include "swis.h"
+
+#include "riscos.h"
+
+char *strdup(const char *s)
+{
+    char *mem = malloc(strlen(s) + 1);
+    if (!mem)
+        return NULL;
+
+    strcpy(mem, s);
+    return mem;
+}
+
+
+int mkdir(const char *f, int mode)
+{
+    _kernel_oserror *err;
+    err = _swix(OS_File, _INR(0,1)|_IN(4), 8, f, 0);
+    return (err == NULL) ? 0 : -1;
+}

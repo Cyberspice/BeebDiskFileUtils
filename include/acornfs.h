@@ -25,7 +25,7 @@ SOFTWARE.
 #ifndef __ACORNFS_H
 #define __ACORNFS_H
 
-#include <stdint.h>
+#include "defs.h"
 
 typedef enum {
   LOCKED = 0x80
@@ -45,7 +45,7 @@ typedef struct _tag_ACORN_DIRECTORY {
   char * name;
   uint8_t options;
   int num_of_files;
-  ACORN_FILE files[];
+  ACORN_FILE files[1];
 } ACORN_DIRECTORY;
 
 #ifdef __cplusplus

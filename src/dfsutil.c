@@ -22,13 +22,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#ifndef __riscos
 #include <sys/stat.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
+#ifndef __riscos
 #include <stdbool.h>
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <limits.h>
 
@@ -106,10 +110,12 @@ static int list_diskfile(int argc, char * argv[]) {
 
   FILE * diskfile = fopen(argv[0], "rb");
   if (diskfile == NULL) {
+#ifdef ENOENT
     if (errno == ENOENT) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
+#endif
 
     fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
     return DFSUTILS_OPEN_FAILED;
@@ -129,8 +135,9 @@ static int list_diskfile(int argc, char * argv[]) {
 
   if (acorn_dirp->num_of_files) {
     ACORN_FILE * acorn_filep = &(acorn_dirp->files[0]);
+    int i;
 
-    for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+    for (i = 0; i < acorn_dirp->num_of_files; i++) {
       printf("  %-16s 0x%08x 0x%08x %10u %10u\n",
         acorn_filep->name,
         acorn_filep->load_address,
@@ -182,10 +189,12 @@ static int extract_diskfile(int argc, char * argv[]) {
 
   FILE * diskfile = fopen(argv[0], "rb");
   if (diskfile == NULL) {
+#ifndef __riscos
     if (errno == ENOENT) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
+#endif
 
     fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
     return DFSUTILS_OPEN_FAILED;
@@ -225,7 +234,8 @@ static int extract_diskfile(int argc, char * argv[]) {
   if (argc) {
     while (argc) {
       int found = false;
-      for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+      int i;
+      for (i = 0; i < acorn_dirp->num_of_files; i++) {
         if (!strcmp(acorn_dirp->files[i].name, argv[0])) {
           found = true;
           acorn_filep = &(acorn_dirp->files[i]);
@@ -249,9 +259,10 @@ static int extract_diskfile(int argc, char * argv[]) {
       file_count++;
     }
   } else {
+    int i;
     acorn_filep = acorn_dirp->files;
 
-    for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+    for (i = 0; i < acorn_dirp->num_of_files; i++) {
       ret = extract_file(diskfile, dirname, acorn_filep);
       if (ret != EXIT_SUCCESS) {
         break;
@@ -285,10 +296,12 @@ static int format_diskfile(int argc, char * argv[]) {
   printf("Writing: %s\n", argv[1]);
   diskfile = fopen(argv[0], "wb");
   if (diskfile == NULL) {
+#ifndef __riscos
     if (errno == ENOENT) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
+#endif
 
     fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
     return DFSUTILS_OPEN_FAILED;
@@ -338,10 +351,12 @@ static int add_file(int argc, char * argv[]) {
 
   diskfile = fopen(argv[0], "rb+");
   if (diskfile == NULL) {
+#ifndef __riscos
     if (errno == ENOENT) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
+#endif
 
     fprintf(stderr, "Could not open: %s (%s)\n", argv[0], strerror(errno));
     return DFSUTILS_OPEN_FAILED;
@@ -349,10 +364,12 @@ static int add_file(int argc, char * argv[]) {
 
   file = fopen(argv[1], "rb");
   if (file == NULL) {
+#ifndef __riscos
     if (errno == ENOENT) {
       fprintf(stderr, "File not found: %s\n", argv[1]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
+#endif
 
     fprintf(stderr, "Could not open: %s (%s)\n", argv[1], strerror(errno));
     return DFSUTILS_OPEN_FAILED;
@@ -391,6 +408,7 @@ int main(int argc, char * argv[]) {
   bool do_update = false;
   int actions = 0;
 
+#ifndef NO_GETOPT_LONG
   static struct option longopts[] = {
     { "40",        no_argument,       &tracks,    40},
     { "80",        no_argument,       &tracks,    80},
@@ -404,8 +422,13 @@ int main(int argc, char * argv[]) {
     { "verbose",   no_argument,       NULL,       'v'},
     { NULL,        0,                 NULL,       0  }
   };
+#endif
 
+#ifndef NO_GETOPT_LONG
   while ((ch = getopt_long(argc, argv, "ad:fhruvx", longopts, NULL)) != -1) {
+#else
+  while ((ch = getopt(argc, argv, "ad:fhruvx")) != -1) {
+#endif
     switch(ch) {
       case 0: /* Track values */
         break;

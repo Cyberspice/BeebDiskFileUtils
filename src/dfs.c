@@ -30,10 +30,15 @@ SOFTWARE.
 #include "dfs.h"
 #include "debug.h"
 
+#ifdef __riscos
+#define min(a,b) \
+         ((a) < (b) ? (a) : (b))
+#else
 #define min(a,b) \
        ({ __typeof__ (a) _a = (a); \
            __typeof__ (b) _b = (b); \
          _a < _b ? _a : _b; })
+#endif
 
 static int get_number_of_sectors(const DFS_SECTOR_1 * sector1p) {
   uint16_t sector_high;
@@ -71,6 +76,7 @@ void increment_cycle_number(DFS_SECTOR_1 * sector1p) {
 
 static char * get_disk_name(const DFS_SECTOR_0 * sector0p, const DFS_SECTOR_1 * sector1p) {
   char diskname[DFS_MAX_DISK_NAME_LEN + 1];
+  int i;
 
   memset(diskname, 0, sizeof(diskname));
   memcpy(
@@ -82,7 +88,7 @@ static char * get_disk_name(const DFS_SECTOR_0 * sector0p, const DFS_SECTOR_1 * 
     sector1p->disk_name_1.diskname_1,
     sizeof(sector1p->disk_name_1.diskname_1));
 
-  for (int i = 0; i <= DFS_MAX_DISK_NAME_LEN; i++) {
+  for (i = 0; i <= DFS_MAX_DISK_NAME_LEN; i++) {
     if (diskname[i] == '\0' || diskname[i] == ' ') {
       diskname[i] = '\0';
       break;
@@ -95,6 +101,7 @@ static char * get_disk_name(const DFS_SECTOR_0 * sector0p, const DFS_SECTOR_1 * 
 static int dfs_get_file_name_and_dir(const char * file_name, char ** namepp, char * dirp) {
   char * name = strdup(file_name);
   char * separator = strchr(name, '.'); /* First '.' */
+  char * p;
 
   if (namepp == NULL || dirp == NULL) {
     return DFS_ERROR_FAILED;
@@ -130,7 +137,7 @@ static int dfs_get_file_name_and_dir(const char * file_name, char ** namepp, cha
   }
 
   /* Test for invalid chars.  '.' will have already been tested above */
-  for (char * p = name; *p; p++) {
+  for (p = name; *p; p++) {
     if ((*p == ':') || (*p == '\"') || (*p == '#') || (*p == '*') || (*p == ' ')) {
       free(name);
 
@@ -158,11 +165,12 @@ static int dfs_get_file_name_and_dir(const char * file_name, char ** namepp, cha
 static char * get_file_name(const DFS_FILE_NAME * filenamep) {
   /* Filename size plus '.' plus directory character */
   char filename[DFS_MAX_FILE_NAME_LEN + 3];
+  int i;
 
   memset(filename, 0, sizeof(filename));
   memcpy(filename, filenamep->filename, DFS_MAX_FILE_NAME_LEN);
 
-  for (int i = 0; i <= DFS_MAX_FILE_NAME_LEN; i++) {
+  for (i = 0; i <= DFS_MAX_FILE_NAME_LEN; i++) {
     if (filename[i] == '\0' || filename[i] == ' ') {
       if (filenamep->directory != '$') {
         filename[i++] = '.';
@@ -265,9 +273,10 @@ static int get_first_free_sector(DFS_SECTOR_1 * sector1p, int * free_sectorp) {
   DFS_FILE_PARAMS * file_params = &(sector1p->file_params[0]);
   int free_sector = 2; /* Empty disk is sector 2 */
   int file_length = 0;
+  int i;
 
   /* Find last file on the disk */
-  for (int i = 0; i < sector1p->disk_name_1.num_of_files; i++) {
+  for (i = 0; i < sector1p->disk_name_1.num_of_files; i++) {
     int start_sector =
       ((uint32_t)sector1p->file_params[i].start_sector_low) +
       (((uint32_t)sector1p->file_params[i].start_sector_high & DFS_START_SECTOR_HIGH_MASK) * 0x100);
@@ -315,6 +324,7 @@ int dfs_read_catalogue(FILE * diskfile, ACORN_DIRECTORY ** acorn_dirpp) {
   DFS_FILE_PARAMS * fileparamsp;
   ACORN_FILE * acorn_filep;
   int ret;
+  int i;
 
   if (acorn_dirpp == NULL) {
     return DFS_ERROR_FAILED;
@@ -351,7 +361,7 @@ int dfs_read_catalogue(FILE * diskfile, ACORN_DIRECTORY ** acorn_dirpp) {
   fileparamsp = sector1p->file_params;
   acorn_filep = acorn_dirp->files;
 
-  for(int i = 0; i < num_of_files; i++) {
+  for(i = 0; i < num_of_files; i++) {
     get_file_info(filenamep++, fileparamsp++, acorn_filep++);
   }
 
@@ -374,6 +384,7 @@ int dfs_format_diskfile(int num_of_sectors, const char * name, FILE * diskfile) 
   uint8_t sector2[DFS_SECTOR_SIZE];
   size_t namelen = strlen(name);
   size_t count = 0;
+  int i;
 
   if (num_of_sectors != DFS_40_TRACK_NUM_OF_SECTORS && num_of_sectors != DFS_80_TRACK_NUM_OF_SECTORS) {
     if (DEBUG_LEVEL(DEBUG_LEVEL_ERROR)) fprintf(stderr, "Invalid number of sectors: %u\n", num_of_sectors);
@@ -422,7 +433,7 @@ int dfs_format_diskfile(int num_of_sectors, const char * name, FILE * diskfile) 
   }
 
   /* Pad out to the number of sectors */
-  for (int i = 2; i < num_of_sectors; i++) {
+  for (i = 2; i < num_of_sectors; i++) {
     count = fwrite(sector2, sizeof(sector2), 1, diskfile);
     if (count == 0) {
       if (DEBUG_LEVEL(DEBUG_LEVEL_ERROR)) fprintf(stderr, "Could not write data sector: %u\n", i);
@@ -527,6 +538,7 @@ int dfs_add_file(FILE * diskfile, ACORN_FILE * acorn_filep, FILE * file) {
   int free_space;
   int num_of_files;
   int ret;
+  int i;
 
   ret = read_catalogue_sectors(diskfile, sector0, sector1, &num_of_sectors);
   if (ret != DFS_ERROR_NONE) {
@@ -551,7 +563,7 @@ int dfs_add_file(FILE * diskfile, ACORN_FILE * acorn_filep, FILE * file) {
   memcpy(dfs_name, name, strlen(name));
   free(name);
 
-  for (int i = 0; i < num_of_files; i++) {
+  for (i = 0; i < num_of_files; i++) {
     if (dir != (sector0p->file_names[i].directory & DFS_DIR_NAME_MASK)) {
       continue;
     }
