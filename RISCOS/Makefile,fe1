@@ -7,7 +7,7 @@ BUILD32=1
 #
 # Program specific options:
 #
-COMPONENT  = BeebDiskFileUtils
+COMPONENT  = DFSUtils
 
 # Specifies additional targets for startup
 #INITTARGET = inittarget
