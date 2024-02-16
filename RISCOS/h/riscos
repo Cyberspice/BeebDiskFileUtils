@@ -1,0 +1,15 @@
+/*******************************************************************
+ * File:        riscos
+ * Purpose:     RISC OS functions for BeebDiskFileUtils
+ * Author:      Gerph
+ * Date:        15 Feb 2024
+ ******************************************************************/
+
+#ifndef RISCOS_H
+#define RISCOS_H
+
+char *strdup(const char *s);
+
+int mkdir(const char *f, int mode);
+
+#endif

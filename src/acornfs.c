@@ -39,6 +39,7 @@ SOFTWARE.
  */
 int acornfs_free_directory(ACORN_DIRECTORY * acorn_dirp) {
   ACORN_FILE * acorn_filep;
+  int i;
 
   if (acorn_dirp == NULL) {
     if (DEBUG_LEVEL(DEBUG_LEVEL_ERROR)) fprintf(stdout, "Invalid directory pointer!\n");
@@ -46,7 +47,7 @@ int acornfs_free_directory(ACORN_DIRECTORY * acorn_dirp) {
   }
 
   acorn_filep = acorn_dirp->files;
-  for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+  for (i = 0; i < acorn_dirp->num_of_files; i++) {
     free(acorn_filep->name);
     acorn_filep++;
   }

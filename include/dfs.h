@@ -25,7 +25,11 @@ SOFTWARE.
 #ifndef __DFS_H
 #define __DFS_H
 
+#ifndef __riscos
 #include <stdint.h>
+#else
+#include "defs.h"
+#endif
 #include "acornfs.h"
 #include "dfserr.h"
 
