@@ -59,11 +59,19 @@ static void short_help(void) {
   fprintf(stderr,
     "dfsutils - Acorn DFS disk image utilities\n\n"
     "Usage: dfsutils diskfile\n"
+#ifdef NO_GETOPT_LONG
+    "   or: dfsutils -a [option] diskfile file load_address exec_address [locked]\n"
+    "   or: dfsutils -x [option] diskfile [file [file]...]\n"
+    "   or: dfsutils -f [option] diskfile diskname\n"
+    "   or: dfsutils -r [option] diskfile file [file [file]...]\n"
+    "   or: dfsutils -u [option] diskfile file load_address exec_address [locked]\n"
+#else
     "   or: dfsutils --add [option] diskfile file load_address exec_address [locked]\n"
     "   or: dfsutils --extract [option] diskfile [file [file]...]\n"
     "   or: dfsutils --format [option] diskfile diskname\n"
     "   or: dfsutils --remove [option] diskfile file [file [file]...]\n"
     "   or: dfsutils --update [option] diskfile file load_address exec_address [locked]\n"
+#endif
   );
 }
 
@@ -71,16 +79,23 @@ static void help(void) {
   short_help();
   fprintf(stderr,
     "\nOptions:\n"
-    "       --40           Simulate 40 track disk\n"
-    "       --80           Simulate 80 track disk (default)\n"
-    "   -a, --add          Add a file to the disk image\n"
-    "   -d, --dir          Target directory\n"
-    "   -f, --format       Creates a disk image (overwrites any existing file)\n"
-    "   -h, --help         Display help\n"
-    "   -r, --remove       Remove a file from the disk image\n"
-    "   -u, --update       Update the properties of a file\n"
-    "   -v, --verbose      Raise the verbosity (can be used more than once)\n"
-    "   -x, --extract      Extract file(s)\n"
+#ifdef NO_GETOPT_LONG
+#define OPTION_HELP(short, long, help) \
+    "   " short "     " help "\n"
+#else
+#define OPTION_HELP(short, long, help) \
+    "   " short ", " long "      " help "\n"
+#endif
+    OPTION_HELP("-4", "--40     ", "Simulate 40 track disk")
+    OPTION_HELP("-8", "--80     ", "Simulate 80 track disk (default)")
+    OPTION_HELP("-a", "--add    ", "Add a file to the disk image")
+    OPTION_HELP("-d", "--dir    ", "Target directory")
+    OPTION_HELP("-f", "--format ", "Creates a disk image (overwrites any existing file)")
+    OPTION_HELP("-h", "--help   ", "Display help")
+    OPTION_HELP("-r", "--remove ", "Remove a file from the disk image")
+    OPTION_HELP("-u", "--update ", "Update the properties of a file")
+    OPTION_HELP("-v", "--verbose", "Raise the verbosity (can be used more than once)")
+    OPTION_HELP("-x", "--extract", "Extract file(s)")
   );
 }
 
@@ -425,12 +440,18 @@ int main(int argc, char * argv[]) {
 #endif
 
 #ifndef NO_GETOPT_LONG
-  while ((ch = getopt_long(argc, argv, "ad:fhruvx", longopts, NULL)) != -1) {
+  while ((ch = getopt_long(argc, argv, "48ad:fhruvx", longopts, NULL)) != -1) {
 #else
-  while ((ch = getopt(argc, argv, "ad:fhruvx")) != -1) {
+  while ((ch = getopt(argc, argv, "48ad:fhruvx")) != -1) {
 #endif
     switch(ch) {
       case 0: /* Track values */
+        break;
+      case '4': /* 40 tracks */
+        tracks = 40;
+        break;
+      case '8': /* 80 tracks */
+        tracks = 80;
         break;
       case 'a': /* Add */
         do_add = true;
