@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2022 Cyberspice cyberspice@cyberspice.org.uk
+Copyright (c) 2024 Gerph <gerph@gerph.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,16 +22,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#ifndef __DEBUG_H
-#define __DEBUG_H
+/* Defines the interface for reading and writing a disk image */
 
-#define DEBUG_LEVEL_ERROR 1
-#define DEBUG_LEVEL_WARNING 2
-#define DEBUG_LEVEL_INFO 3
-#define DEBUG_LEVEL_DEBUG 4
+#ifndef DISKIMAGEFILE_H
+#define DISKIMAGEFILE_H
 
-extern int verbosity;
+#include "diskimage.h"
 
-#define DEBUG_LEVEL(L) (verbosity >= (L))
+
+/* Open a disk image as a file.
+ *
+ * Returns a DISKIMAGE_ERROR_* value, and updates the pointer to the image handle.
+ */
+int diskimage_openfile(const char *filename, int mode, diskimage_t **dip);
+
 
 #endif

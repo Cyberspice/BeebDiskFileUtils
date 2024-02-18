@@ -25,9 +25,14 @@ SOFTWARE.
 #ifndef __DFS_H
 #define __DFS_H
 
+#ifndef __riscos
 #include <stdint.h>
+#else
+#include "defs.h"
+#endif
 #include "acornfs.h"
 #include "dfserr.h"
+#include "diskimage.h"
 
 #define DFS_SECTOR_SIZE 256
 #define DFS_SECTORS_PER_TRACK 10
@@ -113,7 +118,7 @@ extern "C" {
  * \param acorn_dirpp pointer in which to return the acorn directory
  * \return 0 on success or an error
  */
-int dfs_read_catalogue(FILE * diskfile, ACORN_DIRECTORY ** acorn_dirpp);
+int dfs_read_catalogue(diskimage_t * diskfile, ACORN_DIRECTORY ** acorn_dirpp);
 
 /**
  * \brief Creates an empty DFS disk file
@@ -124,7 +129,7 @@ int dfs_read_catalogue(FILE * diskfile, ACORN_DIRECTORY ** acorn_dirpp);
  *
  * \return 0 on success or an error
  */
-int dfs_format_diskfile(int num_of_sectors, const char * name, FILE * diskfile);
+int dfs_format_diskfile(int num_of_sectors, const char * name, diskimage_t * diskfile);
 
 /**
  * \brief Extracts a file from a DFS disk image
@@ -136,7 +141,7 @@ int dfs_format_diskfile(int num_of_sectors, const char * name, FILE * diskfile);
  *
  * \return 0 on success or an error
  */
-int dfs_extract_file(FILE * diskfile, const ACORN_FILE *acorn_filep, FILE * file);
+int dfs_extract_file(diskimage_t * diskfile, const ACORN_FILE *acorn_filep, FILE * file);
 
 /**
  * \brief Adds a file to the DFS disk image
@@ -147,7 +152,7 @@ int dfs_extract_file(FILE * diskfile, const ACORN_FILE *acorn_filep, FILE * file
  *
  * \return 0 on success or an error
  */
-int dfs_add_file(FILE * diskfile, ACORN_FILE * acorn_filep, FILE * file);
+int dfs_add_file(diskimage_t * diskfile, ACORN_FILE * acorn_filep, FILE * file);
 
 #ifdef __cplusplus
 }

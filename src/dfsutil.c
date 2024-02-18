@@ -22,18 +22,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#ifndef __riscos
 #include <sys/stat.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
+#ifndef __riscos
 #include <stdbool.h>
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <limits.h>
 
 #include "dfs.h"
 #include "acornfs.h"
+#include "diskimagefile.h"
 #include "debug.h"
 
 #ifndef PATH_MAX
@@ -55,11 +60,19 @@ static void short_help(void) {
   fprintf(stderr,
     "dfsutils - Acorn DFS disk image utilities\n\n"
     "Usage: dfsutils diskfile\n"
+#ifdef NO_GETOPT_LONG
+    "   or: dfsutils -a [option] diskfile file load_address exec_address [locked]\n"
+    "   or: dfsutils -x [option] diskfile [file [file]...]\n"
+    "   or: dfsutils -f [option] diskfile diskname\n"
+    "   or: dfsutils -r [option] diskfile file [file [file]...]\n"
+    "   or: dfsutils -u [option] diskfile file load_address exec_address [locked]\n"
+#else
     "   or: dfsutils --add [option] diskfile file load_address exec_address [locked]\n"
     "   or: dfsutils --extract [option] diskfile [file [file]...]\n"
     "   or: dfsutils --format [option] diskfile diskname\n"
     "   or: dfsutils --remove [option] diskfile file [file [file]...]\n"
     "   or: dfsutils --update [option] diskfile file load_address exec_address [locked]\n"
+#endif
   );
 }
 
@@ -67,16 +80,23 @@ static void help(void) {
   short_help();
   fprintf(stderr,
     "\nOptions:\n"
-    "       --40           Simulate 40 track disk\n"
-    "       --80           Simulate 80 track disk (default)\n"
-    "   -a, --add          Add a file to the disk image\n"
-    "   -d, --dir          Target directory\n"
-    "   -f, --format       Creates a disk image (overwrites any existing file)\n"
-    "   -h, --help         Display help\n"
-    "   -r, --remove       Remove a file from the disk image\n"
-    "   -u, --update       Update the properties of a file\n"
-    "   -v, --verbose      Raise the verbosity (can be used more than once)\n"
-    "   -x, --extract      Extract file(s)\n"
+#ifdef NO_GETOPT_LONG
+#define OPTION_HELP(short, long, help) \
+    "   " short "     " help "\n"
+#else
+#define OPTION_HELP(short, long, help) \
+    "   " short ", " long "      " help "\n"
+#endif
+    OPTION_HELP("-4", "--40     ", "Simulate 40 track disk")
+    OPTION_HELP("-8", "--80     ", "Simulate 80 track disk (default)")
+    OPTION_HELP("-a", "--add    ", "Add a file to the disk image")
+    OPTION_HELP("-d", "--dir    ", "Target directory")
+    OPTION_HELP("-f", "--format ", "Creates a disk image (overwrites any existing file)")
+    OPTION_HELP("-h", "--help   ", "Display help")
+    OPTION_HELP("-r", "--remove ", "Remove a file from the disk image")
+    OPTION_HELP("-u", "--update ", "Update the properties of a file")
+    OPTION_HELP("-v", "--verbose", "Raise the verbosity (can be used more than once)")
+    OPTION_HELP("-x", "--extract", "Extract file(s)")
   );
 }
 
@@ -103,10 +123,11 @@ static int list_diskfile(int argc, char * argv[]) {
 
   ACORN_DIRECTORY * acorn_dirp;
   int ret;
+  diskimage_t *diskfile;
 
-  FILE * diskfile = fopen(argv[0], "rb");
-  if (diskfile == NULL) {
-    if (errno == ENOENT) {
+  ret = diskimage_openfile(argv[0], DISKIMAGE_MODE_READ, &diskfile);
+  if (ret != DISKIMAGE_ERROR_NONE) {
+    if (ret == DISKIMAGE_ERROR_NOT_FOUND) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
@@ -117,11 +138,15 @@ static int list_diskfile(int argc, char * argv[]) {
 
   ret = dfs_read_catalogue(diskfile, &acorn_dirp);
   if (ret != DFS_ERROR_NONE) {
-    fclose(diskfile);
+    if (ret == DFS_ERROR_NOT_A_DFS_DISK)
+        fprintf(stderr, "Disk is not a DFS disk\n");
+    else
+        fprintf(stderr, "Failed to read disk catalogue\n");
+    diskfile->close(diskfile);
     return dfs_error_to_exit_status(ret);
   }
 
-  fclose(diskfile);
+  diskfile->close(diskfile);
 
   printf("Name   : %s\n", acorn_dirp->name);
   printf("Options: %d (%s)\n", acorn_dirp->options, optionstr[acorn_dirp->options]);
@@ -129,8 +154,9 @@ static int list_diskfile(int argc, char * argv[]) {
 
   if (acorn_dirp->num_of_files) {
     ACORN_FILE * acorn_filep = &(acorn_dirp->files[0]);
+    int i;
 
-    for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+    for (i = 0; i < acorn_dirp->num_of_files; i++) {
       printf("  %-16s 0x%08x 0x%08x %10u %10u\n",
         acorn_filep->name,
         acorn_filep->load_address,
@@ -149,7 +175,7 @@ static int list_diskfile(int argc, char * argv[]) {
   return EXIT_SUCCESS;
 }
 
-static int extract_file(FILE* diskfile, const char * dirname, const ACORN_FILE * acorn_filep) {
+static int extract_file(diskimage_t* diskfile, const char * dirname, const ACORN_FILE * acorn_filep) {
   static char path[PATH_MAX + 1];
   FILE * file;
   int ret;
@@ -165,11 +191,11 @@ static int extract_file(FILE* diskfile, const char * dirname, const ACORN_FILE *
 
   ret = dfs_extract_file(diskfile, acorn_filep, file);
   if (ret != DFS_ERROR_NONE) {
-    fclose(file);
+    diskfile->close(diskfile);
     return dfs_error_to_exit_status(ret);
   }
 
-  fclose(file);
+  diskfile->close(diskfile);
   return EXIT_SUCCESS;
 }
 
@@ -179,10 +205,11 @@ static int extract_diskfile(int argc, char * argv[]) {
   char * dirname;
   int ret;
   int file_count = 0;
+  diskimage_t *diskfile;
 
-  FILE * diskfile = fopen(argv[0], "rb");
-  if (diskfile == NULL) {
-    if (errno == ENOENT) {
+  ret = diskimage_openfile(argv[0], DISKIMAGE_MODE_READ, &diskfile);
+  if (ret != DISKIMAGE_ERROR_NONE) {
+    if (ret == DISKIMAGE_ERROR_NOT_FOUND) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
@@ -193,13 +220,13 @@ static int extract_diskfile(int argc, char * argv[]) {
 
   ret = dfs_read_catalogue(diskfile, &acorn_dirp);
   if (ret != DFS_ERROR_NONE) {
-    fclose(diskfile);
+    diskfile->close(diskfile);
     return dfs_error_to_exit_status(ret);
   }
 
   if (acorn_dirp->num_of_files == 0) {
     printf("Disk image empty! Nothing to extract.\n");
-    fclose(diskfile);
+    diskfile->close(diskfile);
     return 0;
   }
 
@@ -212,7 +239,7 @@ static int extract_diskfile(int argc, char * argv[]) {
   ret = mkdir(dirname, 0777);
   if (ret == -1) {
     fprintf(stderr, "Could not create: %s (%s)\n", dirname, strerror(errno));
-    fclose(diskfile);
+    diskfile->close(diskfile);
     return DFSUTILS_OPEN_FAILED;
   }
 
@@ -225,7 +252,8 @@ static int extract_diskfile(int argc, char * argv[]) {
   if (argc) {
     while (argc) {
       int found = false;
-      for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+      int i;
+      for (i = 0; i < acorn_dirp->num_of_files; i++) {
         if (!strcmp(acorn_dirp->files[i].name, argv[0])) {
           found = true;
           acorn_filep = &(acorn_dirp->files[i]);
@@ -249,9 +277,10 @@ static int extract_diskfile(int argc, char * argv[]) {
       file_count++;
     }
   } else {
+    int i;
     acorn_filep = acorn_dirp->files;
 
-    for (int i = 0; i < acorn_dirp->num_of_files; i++) {
+    for (i = 0; i < acorn_dirp->num_of_files; i++) {
       ret = extract_file(diskfile, dirname, acorn_filep);
       if (ret != EXIT_SUCCESS) {
         break;
@@ -263,14 +292,14 @@ static int extract_diskfile(int argc, char * argv[]) {
   }
 
   printf("%d files extracted\n", file_count);
-  fclose(diskfile);
+  diskfile->close(diskfile);
 
   return ret;
 }
 
 static int format_diskfile(int argc, char * argv[]) {
-  FILE * diskfile = NULL;
   int ret;
+  diskimage_t *diskfile = NULL;
 
   if (argc < 2) {
     short_help();
@@ -283,9 +312,10 @@ static int format_diskfile(int argc, char * argv[]) {
   }
 
   printf("Writing: %s\n", argv[1]);
-  diskfile = fopen(argv[0], "wb");
-  if (diskfile == NULL) {
-    if (errno == ENOENT) {
+
+  ret = diskimage_openfile(argv[0], DISKIMAGE_MODE_READ, &diskfile);
+  if (ret != DISKIMAGE_ERROR_NONE) {
+    if (ret == DISKIMAGE_ERROR_NOT_FOUND) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
@@ -296,7 +326,7 @@ static int format_diskfile(int argc, char * argv[]) {
 
   ret = dfs_format_diskfile(tracks * DFS_SECTORS_PER_TRACK, argv[1], diskfile);
 
-  fclose(diskfile);
+  diskfile->close(diskfile);
 
   if (ret != DFS_ERROR_NONE) {
     return dfs_error_to_exit_status(ret);
@@ -307,7 +337,7 @@ static int format_diskfile(int argc, char * argv[]) {
 
 static int add_file(int argc, char * argv[]) {
   ACORN_FILE acorn_file;
-  FILE * diskfile = NULL;
+  diskimage_t *diskfile = NULL;
   FILE * file = NULL;
   char * endptr;
   size_t count;
@@ -336,9 +366,10 @@ static int add_file(int argc, char * argv[]) {
     }
   }
 
-  diskfile = fopen(argv[0], "rb+");
-  if (diskfile == NULL) {
-    if (errno == ENOENT) {
+
+  ret = diskimage_openfile(argv[0], DISKIMAGE_MODE_UPDATE, &diskfile);
+  if (ret != DISKIMAGE_ERROR_NONE) {
+    if (ret == DISKIMAGE_ERROR_NOT_FOUND) {
       fprintf(stderr, "File not found: %s\n", argv[0]);
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
@@ -349,10 +380,14 @@ static int add_file(int argc, char * argv[]) {
 
   file = fopen(argv[1], "rb");
   if (file == NULL) {
+    diskfile->close(diskfile);
+#ifndef __riscos
     if (errno == ENOENT) {
       fprintf(stderr, "File not found: %s\n", argv[1]);
+      /* NOTE: Strictly it's not the diskfile that's not found, but the file being added */
       return DFSUTILS_DISKFILE_NOT_FOUND;
     }
+#endif
 
     fprintf(stderr, "Could not open: %s (%s)\n", argv[1], strerror(errno));
     return DFSUTILS_OPEN_FAILED;
@@ -361,6 +396,8 @@ static int add_file(int argc, char * argv[]) {
 
   ret = fseek(file, 0, SEEK_END);
   if (ret == -1) {
+    diskfile->close(diskfile);
+    fclose(file);
     fprintf(stderr, "Could not calculate file size: (%s)\n", strerror(errno));
     return DFSUTILS_ERROR_FAILED;
   }
@@ -371,7 +408,7 @@ static int add_file(int argc, char * argv[]) {
   ret = dfs_add_file(diskfile, &acorn_file, file);
 
   free(acorn_file.name);
-  fclose(diskfile);
+  diskfile->close(diskfile);
   fclose(file);
 
   if (ret != DFS_ERROR_NONE) {
@@ -382,7 +419,6 @@ static int add_file(int argc, char * argv[]) {
 }
 
 int main(int argc, char * argv[]) {
-  FILE * diskfile = NULL;
   int ch;
   bool do_add = false;
   bool do_format = false;
@@ -391,6 +427,7 @@ int main(int argc, char * argv[]) {
   bool do_update = false;
   int actions = 0;
 
+#ifndef NO_GETOPT_LONG
   static struct option longopts[] = {
     { "40",        no_argument,       &tracks,    40},
     { "80",        no_argument,       &tracks,    80},
@@ -404,10 +441,21 @@ int main(int argc, char * argv[]) {
     { "verbose",   no_argument,       NULL,       'v'},
     { NULL,        0,                 NULL,       0  }
   };
+#endif
 
-  while ((ch = getopt_long(argc, argv, "ad:fhruvx", longopts, NULL)) != -1) {
+#ifndef NO_GETOPT_LONG
+  while ((ch = getopt_long(argc, argv, "48ad:fhruvx", longopts, NULL)) != -1) {
+#else
+  while ((ch = getopt(argc, argv, "48ad:fhruvx")) != -1) {
+#endif
     switch(ch) {
       case 0: /* Track values */
+        break;
+      case '4': /* 40 tracks */
+        tracks = 40;
+        break;
+      case '8': /* 80 tracks */
+        tracks = 80;
         break;
       case 'a': /* Add */
         do_add = true;
