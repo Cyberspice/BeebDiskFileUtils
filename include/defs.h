@@ -11,6 +11,7 @@ typedef   signed short int16_t;
 typedef unsigned long uint32_t;
 #define SIZE_MAX ((size_t)0xFFFFFFFFlu)
 #define INT16_MAX (0x7FFFl)
+#define UINT32_MAX ((uint32_t)0xFFFFFFFFlu)
 #include "riscos.h"
 #else
 #include <stdbool.h>

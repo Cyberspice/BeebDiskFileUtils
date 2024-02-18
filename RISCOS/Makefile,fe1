@@ -43,7 +43,8 @@ OBJS       = o.acornfs \
              o.debug \
              o.dfs \
              o.dfsutil \
-             o.riscos
+             o.riscos \
+             o.diskimagefile
 
 # Space separated list of XML files for building documentation.
 #DOCSRC = <prm-in-xml-sources>
